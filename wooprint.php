@@ -241,6 +241,9 @@ function wqtp_orders_page() {
     
     ?>
     <div class="wrap">
+    <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.min.js"></script>
+    <script src="<?php echo plugin_dir_url(__FILE__) . 'sign-message.js' ?>"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js"></script>
         <h2>Commandes en temps réel</h2>
         
         <div class="auto-print-settings">
@@ -256,6 +259,8 @@ function wqtp_orders_page() {
             <button id="refresh_orders" class="button button-primary">Actualiser les commandes</button>
             <span id="last_checked" style="margin-left: 10px;">Dernière vérification: <?php echo date('H:i:s'); ?></span>
         </div>
+        <div id="status_message" style="margin-top: 15px;"></div>
+        <div id="printer" name="printer"></div>
         
         <div id="orders_container">
             <table class="wp-list-table widefat fixed striped">
@@ -293,14 +298,33 @@ function wqtp_orders_page() {
                 </tbody>
             </table>
         </div>
-        
-        <script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.min.js"></script>
-        <script src="<?php echo plugin_dir_url(__FILE__) . 'sign-message.js' ?>"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js"></script>
         <script>
     // Variable pour stocker les IDs des commandes déjà vues
     let seenOrderIds = [];
-    
+
+    function showStatus(message, type = 'info') {
+                const statusDiv = document.getElementById('status_message');
+                statusDiv.innerHTML = message;
+                statusDiv.className = type;
+                if (type === 'error') {
+                    statusDiv.style.color = 'red';
+                } else if (type === 'success') {
+                    statusDiv.style.color = 'green';
+                }
+            }
+
+            function loadPrinters() {
+                qz.printers.find()
+                    .then(printers => {
+                    console.log(printers);
+                    })
+                    .catch(err => {
+                        console.error("Erreur de récupération des imprimantes :", err);
+                        showStatus("Erreur de récupération des imprimantes", 'error');
+                    });
+            }
+
+
     // Fonction de connexion à QZ Tray
     function startQZConnection() {
         if (!qz.websocket.isActive()) {
