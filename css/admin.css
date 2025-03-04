@@ -1,0 +1,17 @@
+
+            .success { color: green; font-weight: bold; }
+            .error { color: red; font-weight: bold; }
+            .info { color: blue; }
+            
+            .wp-list-table th, .wp-list-table td {
+                padding: 8px;
+            }
+            
+            .auto-print-settings {
+                background: #f9f9f9;
+                padding: 10px;
+                margin: 10px 0;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+        

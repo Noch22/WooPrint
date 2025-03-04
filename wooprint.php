@@ -193,28 +193,35 @@ function wqtp_settings_page() {
                 }
                 
                 function sendTestPrint() {
-                    showStatus("Envoi du test d'impression...");
-                    qz.printers.find(printer)
-                        .then(foundPrinter => {
-                            let config = qz.configs.create(foundPrinter);
-                            let data = [
-                                "TEST D'IMPRESSION VIA QZ TRAY\n\n",
-                                "--------------------------------\n\n",
-                                "Date: <?php echo date('d/m/Y H:i'); ?>\n",
-                                "Imprimante: " + printer + "\n\n",
-                                "--------------------------------\n\n",
-                                "Si vous pouvez lire ceci, l'impression fonctionne !\n\n"
-                            ];
-                            return qz.print(config, data);
-                        })
-                        .then(() => {
-                            showStatus("Test d'impression envoyé avec succès !", 'success');
-                        })
-                        .catch(err => {
-                            console.error("Erreur d'impression :", err);
-                            showStatus("Une erreur est survenue lors de l'impression.", 'error');
-                        });
-                }
+                showStatus("Envoi du test d'impression...");
+                qz.printers.find(printer)
+                    .then(foundPrinter => {
+                        let config = qz.configs.create(foundPrinter);
+                        let content = [
+                            {
+                                type: 'pixel',
+                                format: 'html',
+                                flavor: 'plain',
+                                data: [
+                                    "TEST D'IMPRESSION VIA QZ TRAY\n\n",
+                                    "--------------------------------\n\n",
+                                    "Date: " + new Date().toLocaleString('fr-FR') + "\n",
+                                    "Imprimante: " + printer + "\n\n",
+                                    "--------------------------------\n\n",
+                                    "Si vous pouvez lire ceci, l'impression fonctionne !\n\n"
+                                ].join('')
+                            }
+                        ];
+            return qz.print(config, content);
+        })
+        .then(() => {
+            showStatus("Test d'impression envoyé avec succès !", 'success');
+        })
+        .catch(err => {
+            console.error("Erreur d'impression :", err);
+            showStatus("Une erreur est survenue lors de l'impression.", 'error');
+        });
+}
             });
         </script>
     </div>
@@ -423,62 +430,82 @@ function wqtp_orders_page() {
     }
     
     function fetchNewOrders() {
-        fetch('<?php echo admin_url('admin-ajax.php'); ?>?action=wqtp_get_recent_orders')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Mettre à jour l'horodatage
-                    document.getElementById('last_checked').textContent = 'Dernière vérification: ' + new Date().toLocaleTimeString();
-                    
-                    // Mettre à jour le tableau des commandes
-                    const ordersList = document.getElementById('orders_list');
-                    
-                    if (data.orders.length === 0) {
-                        ordersList.innerHTML = '<tr><td colspan="6">Aucune commande récente.</td></tr>';
-                        return;
-                    }
-                    
-                    const newOrdersHtml = [];
-                    const newOrderIds = [];
-                    
-                    data.orders.forEach(order => {
-                        newOrderIds.push(order.id);
+    // Récupérer le dernier ID stocké en base de données
+    fetch('<?php echo admin_url('admin-ajax.php'); ?>?action=get_last_printed_order_id')
+        .then(response => response.json())
+        .then(lastPrintedData => {
+            const lastPrintedOrderId = lastPrintedData.lastOrderId || 0;
+
+            // Récupérer les nouvelles commandes
+            return fetch('<?php echo admin_url('admin-ajax.php'); ?>?action=wqtp_get_recent_orders')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Mettre à jour l'horodatage
+                        document.getElementById('last_checked').textContent = 'Dernière vérification: ' + new Date().toLocaleTimeString();
                         
-                        const row = `
-                            <tr data-order-id="${order.id}">
-                                <td>#${order.id}</td>
-                                <td>${order.client}</td>
-                                <td>${order.total}</td>
-                                <td>${order.date}</td>
-                                <td>${order.status}</td>
-                                <td>
-                                    <button class="button print-order" data-order-id="${order.id}">
-                                        Imprimer
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                        newOrdersHtml.push(row);
+                        // Mettre à jour le tableau des commandes
+                        const ordersList = document.getElementById('orders_list');
                         
-                        // Vérifier s'il s'agit d'une nouvelle commande et si l'impression auto est activée
-                        if (!seenOrderIds.includes(order.id) && document.getElementById('auto_print_new_orders').checked) {
-                            printOrder(order.id);
+                        if (data.orders.length === 0) {
+                            ordersList.innerHTML = '<tr><td colspan="6">Aucune commande récente.</td></tr>';
+                            return;
                         }
-                    });
-                    
-                    ordersList.innerHTML = newOrdersHtml.join('');
-                    
-                    // Mettre à jour la liste des commandes vues
-                    seenOrderIds = newOrderIds;
-                    
-                    // Rattacher les gestionnaires d'événements
-                    attachPrintHandlers();
-                }
-            })
-            .catch(err => {
-                console.error("Erreur de récupération des commandes:", err);
-            });
-    }
+                        
+                        const newOrdersHtml = [];
+                        const newOrderIds = [];
+                        
+                        data.orders.forEach(order => {
+                            newOrderIds.push(order.id);
+                            
+                            const row = `
+                                <tr data-order-id="${order.id}">
+                                    <td>#${order.id}</td>
+                                    <td>${order.client}</td>
+                                    <td>${order.total}</td>
+                                    <td>${order.date}</td>
+                                    <td>${order.status}</td>
+                                    <td>
+                                        <button class="button print-order" data-order-id="${order.id}">
+                                            Imprimer
+                                        </button>
+                                    </td>
+                                </tr>
+                            `;
+                            newOrdersHtml.push(row);
+                            
+                            // Vérifier s'il s'agit d'une nouvelle commande et si elle n'a pas déjà été imprimée
+                            if (order.id > lastPrintedOrderId && 
+                                !seenOrderIds.includes(order.id) && 
+                                document.getElementById('auto_print_new_orders').checked) {
+                                    console.log(lastPrintedOrderId);
+                                printOrder(order.id);
+                                
+                                // Enregistrer le nouvel ID comme dernier ID imprimé
+                                fetch('<?php echo admin_url('admin-ajax.php'); ?>?action=update_last_printed_order_id', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                    },
+                                    body: JSON.stringify({ lastOrderId: order.id })
+                                });
+                            }
+                        });
+                        
+                        ordersList.innerHTML = newOrdersHtml.join('');
+                        
+                        // Mettre à jour la liste des commandes vues
+                        seenOrderIds = newOrderIds;
+                        
+                        // Rattacher les gestionnaires d'événements
+                        attachPrintHandlers();
+                    }
+                });
+        })
+        .catch(err => {
+            console.error("Erreur de récupération des commandes:", err);
+        });
+}
     
     function printOrder(orderId) {
         // Récupérer les données de la commande
@@ -500,28 +527,52 @@ function wqtp_orders_page() {
                 alert("Une erreur est survenue lors de la récupération des données.");
             });
         
-        function sendPrint(order) {
+            function sendPrint(order) {
             qz.printers.find(order.printer)
                 .then(printer => {
                     let config = qz.configs.create(printer);
                     
-                    // Création du contenu du ticket
+                    // Création du contenu du ticket en mode pixel
                     let content = [
-                        "BON DE COMMANDE #" + order.id + "\n\n",
-                        "Date: " + order.date + "\n",
-                        "Client: " + order.client + "\n",
-                        "--------------------------------\n\n"
+                        {
+                            type: 'pixel',
+                            format: 'html',
+                            flavor: 'plain',
+                            data: [
+                                "<html>",
+                                "<body>",
+                                "  <table style='width: 100%'>",
+                                "    <tr>",
+                                "      <td>BON DE COMMANDE #" + order.id + "</td>",
+                                "    </tr>",
+                                "    <tr>",
+                                "      <td>-----------------------------</td>",
+                                "    </tr>",
+                                "    <tr>",
+                                "      <td>Date: " + order.date + "</td>",
+                                "    </tr>",
+                                "    <tr>",
+                                "      <td>Client: " + order.client + "</td>",
+                                "    </tr>",
+                                "    <tr>",
+                                "      <td>-----------------------------</td>",
+                                "    </tr>",
+                                "  </table>",
+                                "</body>",
+                                "</html>"
+                            ].join('')
+                        }
                     ];
                     
                     // Ajouter les produits
                     order.items.forEach(item => {
-                        content.push(item.quantity + "x " + item.name + "\n");
-                        content.push("   " + item.price + "\n");
+                        content[0].data += "<p>" + item.quantity + "x " + item.name + " - " + item.price + "</p>";
                     });
                     
-                    content.push("\n--------------------------------\n");
-                    content.push("TOTAL: " + order.total + "\n\n");
+                    content[0].data += "<p>------------------------------</p>";
+                    content[0].data += "<p><strong>TOTAL: " + order.total + "</strong></p>";
                     
+                    console.log(content);
                     return qz.print(config, content);
                 })
                 .then(() => {
@@ -632,6 +683,65 @@ function wqtp_get_recent_orders() {
     ]);
 }
 add_action('wp_ajax_wqtp_get_recent_orders', 'wqtp_get_recent_orders');
+
+
+// Ajouter ces fonctions dans le fichier principal de votre extension WordPress
+
+// Ajouter les actions AJAX
+add_action('wp_ajax_get_last_printed_order_id', 'wqtp_get_last_printed_order_id');
+add_action('wp_ajax_nopriv_get_last_printed_order_id', 'wqtp_get_last_printed_order_id');
+
+add_action('wp_ajax_update_last_printed_order_id', 'wqtp_update_last_printed_order_id');
+add_action('wp_ajax_nopriv_update_last_printed_order_id', 'wqtp_update_last_printed_order_id');
+
+/**
+ * Récupère le dernier ID de commande imprimé
+ */
+function wqtp_get_last_printed_order_id() {
+    // Vérifier les autorisations si nécessaire
+    // if (!current_user_can('manage_woocommerce')) {
+    //     wp_send_json_error('Unauthorized', 403);
+    //     return;
+    // }
+
+    // Récupérer l'option stockée
+    $last_printed_order_id = get_option('wqtp_last_printed_order_id', 0);
+
+    wp_send_json([
+        'success' => true,
+        'lastOrderId' => intval($last_printed_order_id)
+    ]);
+}
+
+/**
+ * Met à jour le dernier ID de commande imprimé
+ */
+function wqtp_update_last_printed_order_id() {
+    // Vérifier les autorisations si nécessaire
+    // if (!current_user_can('manage_woocommerce')) {
+    //     wp_send_json_error('Unauthorized', 403);
+    //     return;
+    // }
+
+    // Récupérer les données de la requête
+    $data = json_decode(file_get_contents('php://input'), true);
+
+    if (!isset($data['lastOrderId'])) {
+        wp_send_json_error('ID de commande manquant', 400);
+        return;
+    }
+
+    // Mettre à jour l'option avec le nouvel ID
+    $last_order_id = intval($data['lastOrderId']);
+    update_option('wqtp_last_printed_order_id', $last_order_id);
+
+    wp_send_json([
+        'success' => true,
+        'message' => 'Dernier ID de commande mis à jour',
+        'lastOrderId' => $last_order_id
+    ]);
+}
+
 
 // Enqueue des scripts d'administration
 function wqtp_enqueue_admin_scripts($hook) {
